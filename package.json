@@ -23,12 +23,6 @@
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",
         "pluginParameters": {
-            "LENS_ADDRESS": {
-                "type": "string"
-            },
-            "LENS_PRIVATE_KEY": {
-                "type": "string"
-            },
             "OBSIDIAN_API_URL": {
                 "type": "string",
                 "optional": true,
