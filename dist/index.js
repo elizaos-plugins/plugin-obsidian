@@ -15,15 +15,13 @@ import {
   knowledge,
   stringToUuid
 } from "@elizaos/core";
-var ObsidianProvider = class _ObsidianProvider {
+var _ObsidianProvider = class _ObsidianProvider {
   constructor(port = 27123, token, host_url) {
     this.port = port;
     this.token = token;
     this.host_url = host_url;
+    this.connected = false;
   }
-  connected = false;
-  runtime;
-  static instance = null;
   /**
    * Creates an instance of the ObsidianProvider class.
    * @param runtime - The agent runtime.
@@ -685,6 +683,8 @@ var ObsidianProvider = class _ObsidianProvider {
     _ObsidianProvider.instance = null;
   }
 };
+_ObsidianProvider.instance = null;
+var ObsidianProvider = _ObsidianProvider;
 
 // src/enviroment.ts
 import { z } from "zod";
@@ -1834,16 +1834,17 @@ var noteTraversalAction = {
     elizaLogger8.info("Starting note traversal handler");
     const obsidian = await getObsidian(runtime);
     try {
-      let formatHierarchy = function(node, level = 0) {
+      let formatHierarchy2 = function(node, level = 0) {
         const indent = "  ".repeat(level);
         let result = `${indent}- ${node.path}
 `;
         elizaLogger8.info(`Node hierarchy links for note: ${node.links}`);
         for (const link of node.links) {
-          result += formatHierarchy(link, level + 1);
+          result += formatHierarchy2(link, level + 1);
         }
         return result;
       };
+      var formatHierarchy = formatHierarchy2;
       let path = "";
       if (!state) {
         state = await runtime.composeState(message);
@@ -1888,7 +1889,7 @@ var noteTraversalAction = {
         elizaLogger8.info(`Using cached hierarchy for note: ${path}`);
         if (callback) {
           callback({
-            text: formatHierarchy(cachedHierarchy),
+            text: formatHierarchy2(cachedHierarchy),
             metadata: {
               path,
               hierarchy: cachedHierarchy,
@@ -1931,7 +1932,7 @@ var noteTraversalAction = {
         throw new Error(`Failed to build hierarchy for note: ${path}`);
       }
       await storeHierarchyInMemory(runtime, message, hierarchy);
-      const formattedHierarchy = formatHierarchy(hierarchy);
+      const formattedHierarchy = formatHierarchy2(hierarchy);
       elizaLogger8.info(`Successfully built hierarchy for note: ${path}`);
       if (callback) {
         callback({

@@ -1,12 +1,10 @@
-import * as _elizaos_core from '@elizaos/core';
-
 declare const obsidianPlugin: {
     name: string;
     description: string;
-    actions: _elizaos_core.Action[];
-    evaluators: any[];
-    services: any[];
-    providers: any[];
+    actions: any[];
+    evaluators: never[];
+    services: never[];
+    providers: never[];
 };
 
 export { obsidianPlugin as default, obsidianPlugin };
