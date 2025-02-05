@@ -9,19 +9,21 @@ import { elizaLogger as elizaLogger2, composeContext, generateObject, stringToUu
 import { lookup } from "mrmime";
 
 // src/providers/obsidianClient.ts
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
 import {
   elizaLogger,
   knowledge,
   stringToUuid
 } from "@elizaos/core";
-var _ObsidianProvider = class _ObsidianProvider {
+var ObsidianProvider = class _ObsidianProvider {
   constructor(port = 27123, token, host_url) {
     this.port = port;
     this.token = token;
     this.host_url = host_url;
-    this.connected = false;
   }
+  connected = false;
+  runtime;
+  static instance = null;
   /**
    * Creates an instance of the ObsidianProvider class.
    * @param runtime - The agent runtime.
@@ -164,6 +166,7 @@ var _ObsidianProvider = class _ObsidianProvider {
       await this.connect();
     }
     try {
+      const createDirsString = createDirectories.toString();
       const response = await fetch(
         `${this.host_url}/vault/${encodeURIComponent(path)}`,
         {
@@ -171,7 +174,7 @@ var _ObsidianProvider = class _ObsidianProvider {
           headers: {
             Authorization: `Bearer ${this.token}`,
             "Content-Type": "text/markdown",
-            "X-Create-Directories": createDirectories.toString()
+            "X-Create-Directories": createDirsString
           },
           body: content
         }
@@ -312,6 +315,7 @@ var _ObsidianProvider = class _ObsidianProvider {
       await this.connect();
     }
     try {
+      const createDirsString = createDirectories.toString();
       const response = await fetch(
         `${this.host_url}/vault/${encodeURIComponent(path)}`,
         {
@@ -319,7 +323,7 @@ var _ObsidianProvider = class _ObsidianProvider {
           headers: {
             Authorization: `Bearer ${this.token}`,
             "Content-Type": "text/markdown",
-            "X-Create-Directories": createDirectories.toString()
+            "X-Create-Directories": createDirsString
           },
           body: content
         }
@@ -449,7 +453,6 @@ var _ObsidianProvider = class _ObsidianProvider {
         }
         body = JSON.stringify(query);
         break;
-      case "plaintext":
       default:
         contentType = "application/json";
         if (typeof query !== "string") {
@@ -464,7 +467,7 @@ var _ObsidianProvider = class _ObsidianProvider {
         body
       );
       if (queryFormat === "dataview" || queryFormat === "jsonlogic") {
-        const response = await fetch(`${this.host_url}/search`, {
+        const response2 = await fetch(`${this.host_url}/search`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${this.token}`,
@@ -473,26 +476,25 @@ var _ObsidianProvider = class _ObsidianProvider {
           },
           body
         });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response2.ok) {
+          throw new Error(`HTTP error! status: ${response2.status}`);
         }
-        const results = await response.json();
-        return results;
-      } else {
-        const response = await fetch(`${this.host_url}/search/simple?query=${encodeURIComponent(body)}&contextLength=${contextLength}`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.token}`,
-            "Content-Type": contentType,
-            Accept: "application/json"
-          }
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const results = await response.json();
-        return results;
+        const results2 = await response2.json();
+        return results2;
       }
+      const response = await fetch(`${this.host_url}/search/simple?query=${encodeURIComponent(body)}&contextLength=${contextLength}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          "Content-Type": contentType,
+          Accept: "application/json"
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const results = await response.json();
+      return results;
     } catch (error) {
       elizaLogger.error("Search failed:", error.message);
       throw error;
@@ -511,7 +513,7 @@ var _ObsidianProvider = class _ObsidianProvider {
     }
     const orQueries = query.split(/\s+OR\s+/).map((q) => q.trim());
     elizaLogger.log(
-      `Processing search query with OR operator:`,
+      "Processing search query with OR operator:",
       orQueries
     );
     try {
@@ -557,11 +559,12 @@ var _ObsidianProvider = class _ObsidianProvider {
     const processedDirs = /* @__PURE__ */ new Set();
     while (dirsToProcess.length > 0) {
       const currentDir = dirsToProcess.shift();
+      if (currentDir === void 0) continue;
       if (processedDirs.has(currentDir)) {
         continue;
       }
       try {
-        elizaLogger.debug(`Scanning directory: ${currentDir}`);
+        elizaLogger.debug("Scanning directory:", currentDir);
         const items = await this.listDirectoryFiles(currentDir);
         for (const item of items) {
           if (item.endsWith("/")) {
@@ -601,7 +604,7 @@ var _ObsidianProvider = class _ObsidianProvider {
         allFiles.push(...dirFiles);
       }
       elizaLogger.info(`Completed scanning. Found ${allFiles.length} files in vault`);
-      const uniqueFiles = [...new Set(allFiles)];
+      const uniqueFiles = Array.from(new Set(allFiles));
       return uniqueFiles;
     } catch (error) {
       elizaLogger.error("Error in getAllFiles:", error);
@@ -620,45 +623,43 @@ var _ObsidianProvider = class _ObsidianProvider {
       elizaLogger.success(`Found ${allFiles.length} files in vault`);
       for (const file of allFiles) {
         try {
-          if (!file.endsWith(".md")) {
-            continue;
-          }
-          const content = await this.getNote(file);
-          if (!content) {
-            elizaLogger.warn(`No content found for file: ${file}`);
-            continue;
-          }
-          const contentHash = createHash("sha256").update(JSON.stringify(content)).digest("hex");
-          const knowledgeId = stringToUuid(
-            `obsidian-${file}`
-          );
-          const existingDocument = await this.runtime.documentsManager.getMemoryById(knowledgeId);
-          if (existingDocument && existingDocument.content["hash"] === contentHash) {
-            elizaLogger.debug(`Skipping unchanged file: ${file}`);
-            continue;
-          }
-          elizaLogger.info(
-            `Processing knowledge for ${this.runtime.character.name} - ${file}`
-          );
-          await knowledge.set(this.runtime, {
-            id: knowledgeId,
-            content: {
-              text: content.content,
-              hash: contentHash,
-              source: "obsidian",
-              attachments: [],
-              metadata: {
-                path: file,
-                tags: content.tags,
-                frontmatter: content.frontmatter,
-                stats: content.stat
-              }
+          if (file.endsWith(".md")) {
+            const content = await this.getNote(file);
+            if (!content) {
+              elizaLogger.warn(`No content found for file: ${file}`);
+              continue;
             }
-          });
-          await new Promise((resolve) => setTimeout(resolve, 100));
+            const contentHash = createHash("sha256").update(JSON.stringify(content)).digest("hex");
+            const knowledgeId = stringToUuid(
+              `obsidian-${file}`
+            );
+            const existingDocument = await this.runtime.documentsManager.getMemoryById(knowledgeId);
+            if (existingDocument && existingDocument.content.hash === contentHash) {
+              elizaLogger.debug(`Skipping unchanged file: ${file}`);
+              continue;
+            }
+            elizaLogger.info(
+              `Processing knowledge for ${this.runtime.character.name} - ${file}`
+            );
+            await knowledge.set(this.runtime, {
+              id: knowledgeId,
+              content: {
+                text: content.content,
+                hash: contentHash,
+                source: "obsidian",
+                attachments: [],
+                metadata: {
+                  path: file,
+                  tags: content.tags,
+                  frontmatter: content.frontmatter,
+                  stats: content.stat
+                }
+              }
+            });
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
         } catch (error) {
           elizaLogger.error(`Error processing file ${file}:`, error);
-          continue;
         }
       }
       elizaLogger.success("Finished creating memories from vault notes");
@@ -683,8 +684,6 @@ var _ObsidianProvider = class _ObsidianProvider {
     _ObsidianProvider.instance = null;
   }
 };
-_ObsidianProvider.instance = null;
-var ObsidianProvider = _ObsidianProvider;
 
 // src/enviroment.ts
 import { z } from "zod";
@@ -781,7 +780,7 @@ async function getObsidian(runtime) {
     const config = await validateObsidianConfig(runtime);
     obsidianInstance = await ObsidianProvider.create(
       runtime,
-      parseInt(config.OBSIDIAN_API_PORT),
+      Number.parseInt(config.OBSIDIAN_API_PORT),
       config.OBSIDIAN_API_TOKEN,
       config.OBSIDIAN_API_URL
     );
@@ -792,7 +791,9 @@ function extractLinks(noteContent) {
   const linkRegex = /\[\[(.*?)\]\]/g;
   const links = [];
   let match;
-  while ((match = linkRegex.exec(noteContent.content)) !== null) {
+  while (true) {
+    match = linkRegex.exec(noteContent.content);
+    if (match === null) break;
     if (match[1] && !lookup(match[1])) {
       links.push(`${noteContent.path.split("/")[0]}/${match[1]}.md`);
     } else {
@@ -864,7 +865,7 @@ function markdownToPlaintext(markdown) {
   text = text.replace(/!\[([^\]]*)\]\([)]+\)/g, "");
   text = text.replace(/^[\s-]*[-+*]\s+/gm, "");
   text = text.replace(/^\s*\d+\.\s+/gm, "");
-  text = text.replace(/\n\s*\n\s*\n/g, "\n\n");
+  text = text.replace(/\n\s*\n\n/g, "\n\n");
   text = text.trim();
   return text;
 }
@@ -1018,8 +1019,13 @@ async function genereteSearchParameters(prompt, state, runtime) {
   }
 }
 async function processUserInput(userInput, state, runtime) {
+  const searchState = {
+    ...state,
+    query: userInput
+    // Add the query from userInput
+  };
   const prompt = constructSearchPrompt(userInput);
-  const llmResponse = await genereteSearchParameters(prompt, state, runtime);
+  const llmResponse = await genereteSearchParameters(prompt, searchState, runtime);
   try {
     const parsedResponse = JSON.parse(llmResponse);
     const validatedResponse = searchQuerySchema.parse(parsedResponse);
@@ -1048,7 +1054,7 @@ var searchAction = {
     "FULL_SEARCH_VAULT",
     "FULL_SEARCH_NOTES",
     "FULL_SEARCH_FILES",
-    "SERCH_ALL",
+    "SEARCH_ALL",
     "SEARCH_ALL_NOTES",
     "SEARCH_ALL_FILES",
     "SEARCH_VAULT",
@@ -1078,7 +1084,7 @@ var searchAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, state, _options, callback) => {
     elizaLogger3.info("Starting search handler");
     const obsidian = await getObsidian(runtime);
     try {
@@ -1354,7 +1360,7 @@ var listNotesAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, _message, _state, _options, callback) => {
     elizaLogger4.info("Starting list notes handler");
     const obsidian = await getObsidian(runtime);
     try {
@@ -1451,7 +1457,7 @@ var listAllFilesAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, _message, _state, _options, callback) => {
     elizaLogger5.info("Starting list all files handler");
     const obsidian = await getObsidian(runtime);
     try {
@@ -1556,7 +1562,7 @@ var listDirectoryAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, _state, _options, callback) => {
     elizaLogger6.info("Starting list directory handler");
     const obsidian = await getObsidian(runtime);
     try {
@@ -1686,7 +1692,7 @@ var createKnowledgeAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, _message, _state, _options, callback) => {
     elizaLogger7.info("Starting create knowledge handler");
     const obsidian = await getObsidian(runtime);
     try {
@@ -1772,36 +1778,31 @@ import {
   ModelClass as ModelClass2
 } from "@elizaos/core";
 
-// src/templates/traversal.ts
-var traversalTemplate = (userRequest) => `
-Respond with a JSON markdown block containing ONLY the extracted values. Use null for any values that cannot be determined.
+// src/templates/file.ts
+var fileTemplate = (userRequest) => `
+Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
 
 Ensure that:
-1. The path is properly formatted with correct folder structure and ends with .md
-2. Depth is a reasonable number (1-5) to prevent excessive traversal
-3. Content inclusion is specified when detailed analysis is needed
-4. Filters are provided when specific note types or locations are targeted
+1. The path is properly formatted with correct folder structure
+2. The operation matches one of the supported actions (Default: READ)
+3. Content is provided when required for write operations
+4. Path uses forward slashes (/) as separators
 5. Make sure to remove \`\`\`json and \`\`\` from the response
 
 Provide the details in the following JSON format:
 
 \`\`\`json
 {
-    "path": "<folder>/<subfolder>/<note_name>.md",
-    "depth": <number>,
-    "includeContent": <boolean>,
-    "filters": {
-        "tags": ["<tag1>", "<tag2>"],
-        "folders": ["<folder1>", "<folder2>"],
-        "modified": "<YYYY-MM-DD>"
-    }
+    "path": "<folder>/<subfolder>/<filename>",
+    "operation": "<READ|WRITE>",
+    "content": "<file_content_to_write>"
 }
 \`\`\`
 
 Here are the recent user messages for context:
 ${userRequest}
 
-Respond ONLY with a JSON markdown block containing ONLY the extracted values.`;
+Respond ONLY with a JSON markdown block containing only the extracted values.`;
 
 // src/actions/noteTraversal.ts
 var noteTraversalAction = {
@@ -1830,30 +1831,30 @@ var noteTraversalAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, state, _options, callback) => {
     elizaLogger8.info("Starting note traversal handler");
     const obsidian = await getObsidian(runtime);
     try {
-      let formatHierarchy2 = function(node, level = 0) {
+      let formatHierarchy = function(node, level = 0) {
         const indent = "  ".repeat(level);
         let result = `${indent}- ${node.path}
 `;
         elizaLogger8.info(`Node hierarchy links for note: ${node.links}`);
         for (const link of node.links) {
-          result += formatHierarchy2(link, level + 1);
+          result += formatHierarchy(link, level + 1);
         }
         return result;
       };
-      var formatHierarchy = formatHierarchy2;
       let path = "";
+      let currentState;
       if (!state) {
-        state = await runtime.composeState(message);
+        currentState = await runtime.composeState(message);
       } else {
-        state = await runtime.updateRecentMessageState(state);
+        currentState = await runtime.updateRecentMessageState(state);
       }
       const context = composeContext2({
-        state,
-        template: traversalTemplate(message.content.text)
+        state: currentState,
+        template: fileTemplate(message.content.text)
       });
       const noteContext = await generateObject2({
         runtime,
@@ -1889,7 +1890,7 @@ var noteTraversalAction = {
         elizaLogger8.info(`Using cached hierarchy for note: ${path}`);
         if (callback) {
           callback({
-            text: formatHierarchy2(cachedHierarchy),
+            text: formatHierarchy(cachedHierarchy),
             metadata: {
               path,
               hierarchy: cachedHierarchy,
@@ -1932,7 +1933,7 @@ var noteTraversalAction = {
         throw new Error(`Failed to build hierarchy for note: ${path}`);
       }
       await storeHierarchyInMemory(runtime, message, hierarchy);
-      const formattedHierarchy = formatHierarchy2(hierarchy);
+      const formattedHierarchy = formatHierarchy(hierarchy);
       elizaLogger8.info(`Successfully built hierarchy for note: ${path}`);
       if (callback) {
         callback({
@@ -2049,7 +2050,7 @@ var getActiveNoteAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, _message, _state, _options, callback) => {
     elizaLogger9.info("Starting get active note handler");
     const obsidian = await getObsidian(runtime);
     try {
@@ -2131,7 +2132,7 @@ var summarizeActiveNoteAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, state, _options, callback) => {
     elizaLogger9.info("Starting summarize active note handler");
     const obsidian = await getObsidian(runtime);
     try {
@@ -2164,7 +2165,8 @@ var summarizeActiveNoteAction = {
           context,
           modelClass: ModelClass3.MEDIUM
         });
-        currentSummary = currentSummary + "\n" + summary;
+        currentSummary = `${currentSummary}
+${summary}`;
       }
       if (!currentSummary) {
         elizaLogger9.error("Error: No summary found");
@@ -2228,39 +2230,6 @@ import {
   generateObject as generateObject3,
   ModelClass as ModelClass4
 } from "@elizaos/core";
-
-// src/templates/note.ts
-var noteTemplate = (userRequest) => `
-Respond with a JSON block containing ONLY the extracted values. Use null for any values that cannot be determined.
-
-Ensure that:
-1. The path is properly formatted with correct folder structure and ends with .md
-2. The operation matches one of the supported actions (Default: READ)
-3. Content is provided when required for create/update operations
-4. Path uses forward slashes (/) as separators
-5. The note path follows Obsidian's naming conventions
-6. Make sure to remove \`\`\`json and \`\`\` from the response
-
-Provide the details in the following JSON format:
-
-\`\`\`json
-{
-    "path": "<folder>/<subfolder>/<note_name>.md",
-    "operation": "<READ|CREATE|UPDATE>",
-    "content": "<note_content_if_writing>",
-    "metadata": {
-        "tags": ["tag1", "tag2"],
-        "aliases": ["alias1", "alias2"]
-    }
-}
-\`\`\`
-
-Here are the recent user message for context:
-${userRequest}
-
-Respond ONLY with a JSON block containing ONLY the extracted values.`;
-
-// src/actions/note.ts
 var getNoteAction = {
   name: "GET_NOTE",
   similes: [
@@ -2288,19 +2257,20 @@ var getNoteAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, state, _options, callback) => {
     elizaLogger10.info("Starting get note handler");
     const obsidian = await getObsidian(runtime);
     try {
       let path = "";
+      let currentState;
       if (!state) {
-        state = await runtime.composeState(message);
+        currentState = await runtime.composeState(message);
       } else {
-        state = await runtime.updateRecentMessageState(state);
+        currentState = await runtime.updateRecentMessageState(state);
       }
       const context = composeContext4({
-        state,
-        template: noteTemplate(message.content.text)
+        state: currentState,
+        template: fileTemplate(message.content.text)
       });
       const noteContext = await generateObject3({
         runtime,
@@ -2402,34 +2372,6 @@ import {
   generateObject as generateObject4,
   ModelClass as ModelClass5
 } from "@elizaos/core";
-
-// src/templates/file.ts
-var fileTemplate = (userRequest) => `
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-
-Ensure that:
-1. The path is properly formatted with correct folder structure
-2. The operation matches one of the supported actions (Default: READ)
-3. Content is provided when required for write operations
-4. Path uses forward slashes (/) as separators
-5. Make sure to remove \`\`\`json and \`\`\` from the response
-
-Provide the details in the following JSON format:
-
-\`\`\`json
-{
-    "path": "<folder>/<subfolder>/<filename>",
-    "operation": "<READ|WRITE>",
-    "content": "<file_content_to_write>"
-}
-\`\`\`
-
-Here are the recent user messages for context:
-${userRequest}
-
-Respond ONLY with a JSON markdown block containing only the extracted values.`;
-
-// src/actions/file.ts
 var readFileAction = {
   name: "READ_FILE",
   similes: [
@@ -2457,7 +2399,7 @@ var readFileAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, state, _options, callback) => {
     elizaLogger11.info("Starting read file handler");
     const obsidian = await getObsidian(runtime);
     try {
@@ -2580,17 +2522,18 @@ var saveFileAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, state, _options, callback) => {
     elizaLogger12.info("Starting save file handler");
     const obsidian = await getObsidian(runtime);
     try {
+      let currentState;
       if (!state) {
-        state = await runtime.composeState(message);
+        currentState = await runtime.composeState(message);
       } else {
-        state = await runtime.updateRecentMessageState(state);
+        currentState = await runtime.updateRecentMessageState(state);
       }
       const context = composeContext6({
-        state,
+        state: currentState,
         template: fileTemplate(message.content.text)
       });
       const fileContext = await generateObject5({
@@ -2712,17 +2655,18 @@ var openFileAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, state, _options, callback) => {
     elizaLogger13.info("Starting open file handler");
     const obsidian = await getObsidian(runtime);
     try {
+      let currentState;
       if (!state) {
-        state = await runtime.composeState(message);
+        currentState = await runtime.composeState(message);
       } else {
-        state = await runtime.updateRecentMessageState(state);
+        currentState = await runtime.updateRecentMessageState(state);
       }
       const context = composeContext7({
-        state,
+        state: currentState,
         template: fileTemplate(message.content.text)
       });
       const fileContext = await generateObject6({
@@ -2835,17 +2779,18 @@ var updateFileAction = {
       return false;
     }
   },
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, state, _options, callback) => {
     elizaLogger14.info("Starting update file handler");
     const obsidian = await getObsidian(runtime);
     try {
+      let currentState;
       if (!state) {
-        state = await runtime.composeState(message);
+        currentState = await runtime.composeState(message);
       } else {
-        state = await runtime.updateRecentMessageState(state);
+        currentState = await runtime.updateRecentMessageState(state);
       }
       const context = composeContext8({
-        state,
+        state: currentState,
         template: fileTemplate(message.content.text)
       });
       const fileContext = await generateObject7({
