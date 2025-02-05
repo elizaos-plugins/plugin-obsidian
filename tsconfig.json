@@ -1,20 +1,15 @@
 {
-  "extends": "../core/tsconfig.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "./src",
-    "declaration": true,
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "allowJs": true,
-    "isolatedModules": true,
-    "resolveJsonModule": true
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+    "extends": "../core/tsconfig.json",
+    "compilerOptions": {
+        "outDir": "dist",
+        "rootDir": "src",
+        "typeRoots": [
+            "./node_modules/@types",
+            "./src/types"
+        ],
+        "declaration": true
+    },
+    "include": [
+        "src/**/*.ts"
+    ]
 }
