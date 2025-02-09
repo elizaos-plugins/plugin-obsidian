@@ -2133,6 +2133,7 @@ var summarizeActiveNoteAction = {
     }
   },
   handler: async (runtime, message, state, _options, callback) => {
+    var _a, _b;
     elizaLogger9.info("Starting summarize active note handler");
     const obsidian = await getObsidian(runtime);
     try {
@@ -2173,7 +2174,7 @@ ${summary}`;
         return false;
       }
       if (callback) {
-        if (currentSummary.trim()?.split("\n").length < 4 || currentSummary.trim()?.split(" ").length < 100) {
+        if (((_a = currentSummary.trim()) == null ? void 0 : _a.split("\n").length) < 4 || ((_b = currentSummary.trim()) == null ? void 0 : _b.split(" ").length) < 100) {
           callback({
             text: `Here is the summary:
 \`\`\`md
