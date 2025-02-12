@@ -20,5 +20,23 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:client:1.0.0",
+    "pluginParameters": {
+      "OBSIDIAN_API_URL": {
+        "type": "string",
+        "optional": true,
+        "nullable": true
+      },
+      "OBSIDIAN_API_PORT": {
+        "type": "string",
+        "default": "27123"
+      },
+      "OBSIDIAN_API_TOKEN": {
+        "type": "string",
+        "required": true
+      }
+    }
   }
 }
